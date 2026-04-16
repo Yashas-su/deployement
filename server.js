@@ -2,7 +2,7 @@ const app = require("./src/app");
 const connectDatabase = require("./src/config/db")
 const cors = require('cors');
 app.use(cors({
-origin : 'http://localhost:3000',
+origin : 'https://deploy-t1of.onrender.com',
 credentials : true
 }));
 app.listen(3000,()=>{
