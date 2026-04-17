@@ -9,272 +9,251 @@ dotenv.config()
 
 const salt = bcrypt.genSaltSync(10);
 
-/**
- * a function to regiter user and provide refresh token,
- * and access token
- * @param {req} req 
- * @param {res} res 
- * @returns json
- */
-async function registerUser(req,res){
-
-try{
+async function registerUser(req, res) {
+  try {
     console.log(req.body)
-    const {name,email,password,role,phoneno,college,course,year} = await req.body
+    const { name, email, password, role, phoneno, college, course, year } = req.body
 
     const isalreadyRegistered = await userModel.findOne({
-        $or : [
-            { 
-                email 
-            },
-            {
-             phoneno
-            }
-        ]
+      $or: [{ email }, { phoneno }]
     })
 
-    if(isalreadyRegistered){
-        return res.status(401).json({
-            message : 'user already exists',
-            useremail : email
-        })
+    if (isalreadyRegistered) {
+      return res.status(401).json({
+        message: 'user already exists',
+        useremail: email
+      })
     }
 
-    const hashpassword =  bcrypt.hashSync(password, salt);
+    const hashpassword = bcrypt.hashSync(password, salt);
 
-    const newUser= await userModel.create(
-       {
-       name : name,
-       email : email,
-       password : hashpassword,
-       role : role
-       }
-       )
+    const newUser = await userModel.create({
+      name,
+      email,
+      password: hashpassword,
+      role
+    })
 
     console.log(newUser)
 
     const profileOfNewUser = await profileModel.create({
-
-            userid : newUser._id,
-            phoneno : phoneno,
-            college : college,
-            course : course,
-            year : year
-       
-        })
+      userid: newUser._id,
+      phoneno,
+      college,
+      course,
+      year
+    })
 
     console.log(profileOfNewUser)
 
     const walletofNewUser = await walletModel.create({
-            userid : newUser._id,
-            balance : 0.00
-        })
+      userid: newUser._id,
+      balance: 0.00
+    })
 
-    console.log(walletofNewUser,newUser._id)
+    console.log(walletofNewUser, newUser._id)
 
-   await userModel.findOneAndUpdate(
-           {
-           _id : newUser._id
-           },
-           {
-               $set: { 
-                   profile : profileOfNewUser._id ,
-                   wallet : walletofNewUser._id
-                } 
-           } 
-               
-       )
-       
+    await userModel.findOneAndUpdate(
+      { _id: newUser._id },
+      { $set: { profile: profileOfNewUser._id, wallet: walletofNewUser._id } }
+    )
+
     const refreshToken = jwt.sign(
-           {
-               id : newUser._id
-            },
-            process.env.jwt_key,
-            {
-                expiresIn : '7d'
-            }
-        )
+      { id: newUser._id },
+      process.env.jwt_key,
+      { expiresIn: '7d' }
+    )
+
     const refreshTokenHash = bcrypt.hashSync(refreshToken, salt);
+
     const session = await sessionModel.create({
-        
-        userid : newUser._id,
-        refreshTokenHash : refreshTokenHash,
-        ip : req.ip,
-        userAgent  : req.headers['user-agent']
-            
-        }
-        )
+      userid: newUser._id,
+      refreshTokenHash,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    })
 
     const accessToken = jwt.sign(
-    {
-    id : newUser._id,
-    sessionid : session._id
-    },
-    process.env.jwt_key,
-    {
-        expiresIn : '15d'
-    })
-    
-   res.cookie('refreshToken',refreshToken,{
-    httpOnly : true,
-    secure : true,
-    sameSite : 'none',
-    maxAge : 7 * 24 * 60 * 60 * 1000 // 7 days
-   })
+      { id: newUser._id, sessionid: session._id },
+      process.env.jwt_key,
+      { expiresIn: '15d' }
+    )
 
-   return res.status(201).json({
-    message : "user registered successfully",
-    name  : name,
-    email : email,
-    token : accessToken
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000
     })
 
-}catch(err){
-    console.error(err)
+    return res.status(201).json({
+      message: "user registered successfully",
+      name,
+      email,
+      token: accessToken
+    })
+
+  } catch (err) {
+    console.error("Register error:", err)
     return res.status(409).json({
-      message : 'error while registering user try again later',
-       error : err.message
+      message: 'error while registering user try again later',
+      error: err.message
     })
-}
+  }
 }
 
-async function refreshToken(req,res){
-    const refreshToken = req.cookies.refreshToken
-    if(!refreshToken){
-        return res.status(401).json({
-            message : "no refresh token"
-        })
+async function loginUser(req, res) {
+  try {
+    const { email, password } = req.body;
+
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(401).json({
+        message: "invalid email or password",
+        email
+      })
     }
-    const user = jwt.verify(refreshToken,process.env.jwt_key)
-    const refreshTokenHash = bcrypt.hashSync(refreshToken,salt);
-    const session = await sessionModel.findOne({
-        userid : user.id
+
+    const isMatch = bcrypt.compareSync(password, user.password)
+    if (!isMatch) {
+      return res.status(401).json({
+        message: "invalid email or password",
+        email
+      })
+    }
+
+    const refreshToken = jwt.sign(
+      { id: user._id },
+      process.env.jwt_key,
+      { expiresIn: '7d' }
+    )
+
+    const refreshTokenHash = bcrypt.hashSync(refreshToken, salt);
+
+    const session = await sessionModel.create({
+      userid: user._id,
+      refreshTokenHash,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
     })
-    console.log(session)
-    if(!session){
-        return res.status(400).json({
-            message : "invalid refresh token ss"
-        })
-    }
+
     const accessToken = jwt.sign(
-        {
-            id : user.id
-        },
-        process.env.jwt_key,
-        {
-            expiresIn : '15m'
-        }
+      { id: user._id, sessionid: session._id },
+      process.env.jwt_key,
+      { expiresIn: '15d' }
     )
-    const newRefreshToken = jwt.sign({
-        id  : user.id
-    },
-    process.env.jwt_key,
-    {
-        expiresIn  : "15d"
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    })
+
+    return res.status(200).json({
+      message: "login successful",
+      user,
+      token: accessToken
+    })
+
+  } catch (err) {
+    console.error("Login error:", err)
+    return res.status(500).json({
+      message: "error during login, try again later",
+      error: err.message
+    })
+  }
+}
+
+async function refreshToken(req, res) {
+  try {
+    const refreshToken = req.cookies.refreshToken
+    if (!refreshToken) {
+      return res.status(401).json({ message: "no refresh token" })
     }
+
+    const user = jwt.verify(refreshToken, process.env.jwt_key)
+
+    const session = await sessionModel.findOne({ userid: user.id })
+    console.log(session)
+
+    if (!session) {
+      return res.status(400).json({ message: "invalid refresh token" })
+    }
+
+    const accessToken = jwt.sign(
+      { id: user.id },
+      process.env.jwt_key,
+      { expiresIn: '15m' }
     )
-    const newRefreshTokenHash = bcrypt.hashSync(newRefreshToken,salt)
+
+    const newRefreshToken = jwt.sign(
+      { id: user.id },
+      process.env.jwt_key,
+      { expiresIn: '15d' }
+    )
+
+    const newRefreshTokenHash = bcrypt.hashSync(newRefreshToken, salt)
     session.refreshTokenHash = newRefreshTokenHash;
     await session.save();
-    res.cookie("refreshToken",newRefreshToken,{
-    httpOnly : true,
-    secure : true,
-    sameSite : 'none',
-    maxAge : 7 * 24 * 60 * 60 * 1000 // 7 days
-    })
-    res.status(200).json({
-        message : "token regenerated successfully",
-        token :  accessToken
+
+    res.cookie("refreshToken", newRefreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000
     })
 
+    return res.status(200).json({
+      message: "token regenerated successfully",
+      token: accessToken
+    })
+
+  } catch (err) {
+    console.error("Refresh token error:", err)
+    return res.status(500).json({
+      message: "error while refreshing token",
+      error: err.message
+    })
+  }
 }
 
-/**
- * a function to logout the user,
- * remove the tokens,and close the session id
- * @param {req} req 
- * @param {res} res 
- * @returns json
- */
-async function logout(req,res){
+async function logout(req, res) {
+  try {
     const refreshToken = req.cookies.refreshToken
-    const refreshTokenHash = bcrypt.hashSync(refreshToken,salt);
-    const session = await sessionModel.findOne({
-        refreshTokenHash : refreshTokenHash,
-        revoked : false        
-    })
-    if(!session){
-        return res.status(400).json({
-            message  : 'invalid refresh token'
-        })
+    if (!refreshToken) {
+      return res.status(401).json({ message: "no refresh token" })
     }
+
+    const refreshTokenHash = bcrypt.hashSync(refreshToken, salt);
+
+    const session = await sessionModel.findOne({
+      refreshTokenHash,
+      revoked: false
+    })
+
+    if (!session) {
+      return res.status(400).json({ message: 'invalid refresh token' })
+    }
+
     session.revoked = true;
     await session.save();
-    res.clearCookie('refreshToken')
-    return  res.status(200).json({
-        message : 'logged out successfully'
+
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none'
     })
+
+    return res.status(200).json({ message: 'logged out successfully' })
+
+  } catch (err) {
+    console.error("Logout error:", err)
+    return res.status(500).json({
+      message: "error during logout",
+      error: err.message
+    })
+  }
 }
 
-async function loginUser(req,res){
-    const {email,password } = req.body;
-    const user = await userModel.findOne({
-        email,
-    })
-    if(!user){
-        return res.status(401).json({
-            message : "invalid email or password",
-            email : email
-        })
-    }
-    const isMatch = bcrypt.compareSync(password,user.password)
-    if(!isMatch){
-        return res.status(401).json({
-            message : "invalid email or password",
-            email : email
-        })
-    }
-    
-    const refreshToken = jwt.sign(
-           {
-               id : user._id
-            },
-            process.env.jwt_key,
-            {
-                expiresIn : '7d'
-            }
-        )
-    const refreshTokenHash = bcrypt.hashSync(refreshToken, salt);
-    const session = await sessionModel.create({
-        
-        userid : user._id,
-        refreshTokenHash : refreshTokenHash,
-        ip : req.ip,
-        userAgent  : req.headers['user-agent']
-            
-        }
-        )
-
-    const accessToken = jwt.sign(
-    {
-    id : user._id,
-    sessionid : session._id
-    },
-    process.env.jwt_key,
-    {
-        expiresIn : '15d'
-    })
-    
-   res.cookie('refreshToken',refreshToken,{
-    httpOnly : true,
-    secure : true,
-    sameSite : 'none',
-    maxAge : 7 * 24 * 60 * 60 * 1000 // 7 days
-   })
-    return res.status(200).json({
-        message : "login successfull",
-        user : user,
-        token : accessToken
-    })
-}
-module.exports = {registerUser , refreshToken ,logout ,loginUser }
+module.exports = { registerUser, refreshToken, logout, loginUser }
