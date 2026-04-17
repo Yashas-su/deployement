@@ -10,28 +10,28 @@ const splitRoute = require("./routes/split.routes")
 const subjectRoute = require("./routes/subject.routes")
 const cookieParser = require("cookie-parser")
 const cors = require("cors")
+
 const app = express();
 
 app.use(cors({
-    origin: "http://localhost:5173", // frontend URL
+    origin: process.env.FRONTEND_URL || "https://deploy-t1of.onrender.com",
     credentials: true, 
-  }))
+}));
 
 app.use(express.json());
-app.use(cookieParser())
+app.use(cookieParser());
 
-app.use('/api/auth',authRoute) //done
-app.use('/api/user',userRoute) //done
-app.use('/api/profile',profileRoute) //done
-app.use('/api/wallet',walletRoute) //done
-app.use('/api/transaction',transactionRoute) //done
-app.use('/api/group',groupRoute) //done
-app.use('/api/split',splitRoute) //needs receiver while paying
-app.use("/api/academic",academicRoute)
-app.use("/api/subject",subjectRoute)
-// app.use('/api/expense',expenseRoute)
-// app.use('/api/insight',insightRoute)
-// app.use('/api/parent',parentRoute)
+// Health check — fixes "Cannot GET /"
+app.get("/", (req, res) => res.json({ status: "API is running ✅" }));
 
+app.use('/api/auth', authRoute)
+app.use('/api/user', userRoute)
+app.use('/api/profile', profileRoute)
+app.use('/api/wallet', walletRoute)
+app.use('/api/transaction', transactionRoute)
+app.use('/api/group', groupRoute)
+app.use('/api/split', splitRoute)
+app.use("/api/academic", academicRoute)
+app.use("/api/subject", subjectRoute)
 
-module.exports = app
+module.exports = app;
