@@ -23,7 +23,7 @@ app.use(cookieParser());
 
 app.use('/api/auth', authRoute)
 app.use('/api/user', userRoute)
-app.use('/api/profile', profileRoute)
+app.use('/profile', profileRoute)
 app.use('/api/wallet', walletRoute)
 app.use('/api/transaction', transactionRoute)
 app.use('/api/group', groupRoute)
